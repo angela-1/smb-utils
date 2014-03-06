@@ -1,34 +1,45 @@
+/* Main control flow of samba utils. 
+   Copyright (C) 2014 ZHAO Peng <shui.yunduo@gmail.com>
+   
+   This file is part of Samba utils.
+
+   Samba utils is free software: you can redistribute it and/or modify
+   it under the terms of the GNU General Public License as published by
+   the Free Software Foundation, either version 3 of the License, or
+   (at your option) any later version.
+
+   Samba utils is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+   GNU General Public License for more details.
+
+   You should have received a copy of the GNU General Public License
+   along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>. */
+
+
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
-
-/* To deal with arguments. */
 #include <getopt.h>
 
 #include "getact.h"
 
 
-/* Progname. */
+/* Define progname and version number. */
 #define PROGRAM_NAME "smbact"
-#define VERSION "0.1"
+#define VERSION "0.2"
 
 
-/* The max line length. */
-#define LINE_MAX 64
-#define ORNAME   10
+/* Set the max line length. */
+#define MAX_LEN 80
 
 
-/* The password length. */
+/* Group/user name should short than G_NAME_LEN length. */
+#define G_NAME_LEN 10
+
+/* Define auto generated random password length. */
 #define PASSWD_LEN 5
-
-
-
-
-
-
-
-
 
 
 
@@ -38,12 +49,10 @@ int group_flag = 0;
 
 
 /* Store the file name if gives '-f' option. */
-char src_file[LINE_MAX];
+char src_file[MAX_LEN] = "";
 
-/* Store the group name if not gives '-f' option. 
- * the name length is less the ORNAME. */
-
-char group_name[ORNAME];
+/* Store the group name. */
+char group_name[G_NAME_LEN] = "";
 
 
 
@@ -62,6 +71,7 @@ static int sys_adduser (char *user_name, char *group, char *passwd);
 static int sys_deluser (char *user_name);
 
 
+/* Define subcommand enum. '-1' for errors. */
 enum
   {
     action_create = 1,
@@ -72,7 +82,7 @@ enum
 
 
   
-
+/* Redefine uppercase for actions. */
 #define ACTION_CREATE    (int) (action_create)
 #define ACTION_READ      (int) (action_read)
 #define ACTION_UPDATE    (int) (action_update)
@@ -81,7 +91,7 @@ enum
 
 
 
-
+/* Define actions. */
 static const struct action acts[] =
 {
   { "create", opt_arg, ACTION_CREATE },
@@ -93,7 +103,7 @@ static const struct action acts[] =
 
 
 
-/* For getopt. */
+/* Define all options. */
 static const struct option longopts[] =
 {
   { "file", required_argument, NULL, 'f' },
@@ -108,14 +118,16 @@ static const struct option longopts[] =
 
 
 
-
-
-
-
-
-
 /* Read user names from source file,
-   assemble the user name and password, write to output file. */
+   assemble the user name and password, write to output file. 
+
+   Source file format:
+     admin:admin
+     user:admin
+     ...
+
+   Admin is a group itself, and user should join his admin's group. */
+
 static int
 file_assemble (char *src_file)
 {
@@ -128,13 +140,8 @@ file_assemble (char *src_file)
       return (EXIT_FAILURE);
     }
   
-  /* Check if '-o' option exists.
-     if exists, use the user specified file name.
-     else use the source file name with suffix '.db'.*/
-  //  const char *output_file;
-  //  output_file = OUTPUT_FLAG ? DST_FILE_NAME : strcat (SRC_FILE_NAME, ".db");
-
-  char output_file[LINE_MAX];
+  /* Assemble output file name. */
+  char output_file[MAX_LEN];
   sprintf (output_file, "%s%s", src_file, ".db");
 
 
@@ -142,22 +149,28 @@ file_assemble (char *src_file)
   FILE *fop = NULL;
   fop = fopen (output_file, "w");
 
-  /* Set a int to give the random seed. */
+  /* Set a int to give the random seed, it will increase 
+     when scanf a new user. */
   int i = 0;
   
 
-  char user_name[ORNAME];
+  char user_name[G_NAME_LEN];
   char passwd[PASSWD_LEN + 1];
+
   /* Use `fscanf' to read user names. 
-     `fges" return a '\n', drop it. */
-  while ((fscanf (fp, "%s", user_name)) != EOF)
+     `fgets" return a '\n', drop it. */
+  while ((fscanf (fp, "%s:%s", user_name, group_name)) != EOF)
     {
       //printf("Read a new user: %s", USERNAME);
+
       /* Generate a password with a seed, store it in 'PASSWD[]'. */
       gen_passwd(passwd, i++);
+
       //printf("Password: %s\n\n", PASSWD);
       sys_adduser (user_name, group_name, passwd);
-      fprintf(fop, "%s:%s\n",user_name , passwd);
+
+      /* Output result to file. */
+      fprintf(fop, "%s:%s:%s\n",user_name, group_name, passwd);
       
     }
 
@@ -193,11 +206,11 @@ gen_passwd (char *passwd, int seed)
 }
 
 
-
+/* Deal with user input account. */
 static int
 stdin_assemble (int _argc, char *const *_argv)
 {
-  char user_name[ORNAME];
+  char user_name[G_NAME_LEN];
   char passwd[PASSWD_LEN + 1];
   
 
@@ -205,7 +218,7 @@ stdin_assemble (int _argc, char *const *_argv)
   fp = fopen ("smb_act", "a+");
 
 
-  puts ("user input\n");
+  //  puts ("user input\n");
   int i = 2;
   printf ("add these users:\n");
   while (i <= _argc)
@@ -229,21 +242,25 @@ stdin_assemble (int _argc, char *const *_argv)
 
 
 
-
+/* System call to add one user. */
 static int
 sys_adduser (char *user_name, char *group_name, char *passwd)
 {
-  char cmd[LINE_MAX];
+  char cmd[MAX_LEN];
 
-
-  group_flag ?
-    sprintf (cmd, "useradd -M -g %s -s /sbin/nologin %s", group_name, user_name) :
+  /* Situations for add a user:
+     - file input, detect if it is a admin or user.
+     - user input, with '-g' option or not. */
+  (group_flag || (!strcmp (user_name, group_name))) ?
+    sprintf (cmd, "useradd -M -g %s -s /sbin/nologin %s", 
+	     group_name, user_name) :
     sprintf (cmd, "useradd -M -s /sbin/nologin %s", user_name);
 
   printf ("Now run: %s\n", cmd);
   system (cmd);
 
-  sprintf (cmd, "echo -e \"%s\n%s\n\" | pdbedit -a -u %s -t", passwd, passwd, user_name);
+  sprintf (cmd, "echo -e \"%s\n%s\n\" | pdbedit -a -u %s -t", 
+	   passwd, passwd, user_name);
   printf ("Now run: %s\n", cmd);
   system (cmd);
 
@@ -259,7 +276,7 @@ static int
 stdin_delete(int _argc, char *const *_argv)
 {
 
-  char user_name[ORNAME];
+  char user_name[G_NAME_LEN];
   puts ("delete users from input\n");
   int i = 2;
   printf ("argc is: %d i is: %d, value: %s\n", _argc, i, _argv[i]);
@@ -278,11 +295,12 @@ stdin_delete(int _argc, char *const *_argv)
 }
 
 
+/* System calls to delete a user. */
 static int
 sys_deluser (char *user_name)
 {
 
-  char cmd[LINE_MAX];
+  char cmd[MAX_LEN];
   sprintf (cmd, "userdel %s", user_name);
   system (cmd);
 
@@ -313,7 +331,7 @@ sys_deluser (char *user_name)
 
 
 
-
+/* Main control. */
 int
 main (int argc, char *argv[])
 {
@@ -473,16 +491,8 @@ print_help (void)
 
   /* TRANSLATORS: --help output 1 (synopsis)
      no-wrap */
-        printf ("\
-Usage: %s [OPTION]...\n", PROGRAM_NAME);
-
-  /* TRANSLATORS: --help output 2 (brief description)
-     no-wrap */
-  fputs ("\
-Read a user name list, generate a user database with format:\n\
-  user1:password1\n\
-  user2:password2\n\
-  ...\n", stdout);
+  printf ("\
+Usage: %s ACTION [OPTION]...\n", PROGRAM_NAME);
 
   puts ("");
   /* TRANSLATORS: --help output 3: options 1/2
@@ -492,11 +502,22 @@ Read a user name list, generate a user database with format:\n\
   -v, --version       display version information and exit\n", stdout);
 
   puts ("");
-  /* TRANSLATORS: --help output 4: options 2/2
-     no-wrap */
+
+
   fputs ("\
-  -i, --input       must, the source file name contains user list\n\
-  -o, --output      specify the output file name\n", stdout);
+Create a new user:\n\
+  - from file\n\
+    create -f file\n\
+    Will generate a file to store user account.\n", stdout);
+
+  puts ("");
+
+  fputs ("\
+  - from stdin\n\
+    create [-g group] user\n\
+    Will generate a \'smb_act\' file to store user account.\n", stdout);
+
+  puts ("");
 
 
 }
@@ -517,7 +538,7 @@ print_version (void)
      as done here, to avoid having to retranslate the message when a new
      year comes around.  */
   printf ("\
-Copyright (C) %s Free Software Foundation, Inc.\n\
+Copyright (C) %s ZHAO Peng <shui.yunduo@gmail.com>.\n\
 License GPLv3+: GNU GPL version 3 or later <http://gnu.org/licenses/gpl.html>\n\
 This is free software: you are free to change and redistribute it.\n\
 There is NO WARRANTY, to the extent permitted by law.\n",
