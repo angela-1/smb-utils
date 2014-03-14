@@ -17,7 +17,7 @@
    along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>. */
 
 #include <stdio.h>
-
+#include <string.h>
 
 #include "getact.h"
 
@@ -35,21 +35,52 @@ getact (int __argc, char *const *__argv, const struct action *__acts)
   int act_code = -1;
 
   actind = ind;
-    
-  if (ind <= __argc)
-    {
-      while (__acts[i].name != NULL)
-	{
-	  if (strcmp (__argv[ind], __acts[i].name) == 0)
-	    {
-	      act_code = __acts[i].val;
-	      actarg = __argv[ind + 1];
+  
+  printf ("see ind: %d, __argc: %d\n", ind, __argc);
 
+
+  if (ind > __argc)
+    return act_code;
+
+
+  while (__acts[i].name != NULL)
+    {
+      if (strcmp (__argv[ind], __acts[i].name) == 0)
+	{
+	  act_code = __acts[i].val;
+
+	  switch (__acts[i].has_arg)
+	    {
+	    case no_arg:
+	      break;
+	    case req_arg:
+	      if (ind < __argc)
+		{
+		  actarg = __argv[ind + 1];
+		  ind += 1;
+		}
+	      else
+		printf ("Require a arg\n");
+	      break;
+
+	    case opt_arg:
+	      printf ("need a optional arg\n");
+	      if (ind < __argc)
+		{
+		  actarg = __argv[ind + 1];
+		  ind += 1;
+		  printf ("find opt arg: %s.\n", actarg);
+		}
+	      break;
+	    default:
+	      break;
 	    }
-	  i++;
+
 	}
-      ind++;
+      i++;
     }
+  ind++;
+
 
   return act_code;
 }

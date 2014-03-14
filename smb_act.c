@@ -24,6 +24,7 @@
 #include <getopt.h>
 
 #include "getact.h"
+#include "passwd.h"
 
 
 /* Define progname and version number. */
@@ -38,8 +39,7 @@
 /* Group/user name should short than G_NAME_LEN length. */
 #define G_NAME_LEN 10
 
-/* Define auto generated random password length. */
-#define PASSWD_LEN 5
+
 
 
 
@@ -64,7 +64,7 @@ static void print_version (void);
 
 static int stdin_assemble (int _argc, char *const *_argv);
 static int file_assemble (char *src_file);
-static char *gen_passwd (char *passwd, int seed);
+
 
 static int stdin_delete(int _argc, char *const *_argv);
 static int sys_adduser (char *user_name, char *group, char *passwd);
@@ -180,30 +180,7 @@ file_assemble (char *src_file)
 
 }
 
-/* A function generate 5 bit random password. */
-static char *
-gen_passwd (char *passwd, int seed)
-{
-  /* A random pool, string with '\0' ends. */
-  char pool[] = 
-    {
-      "abcdefghijklmnopqrstuvwxyz"
-      "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-      "0123456789"
-    };
 
-  /* Set a seed for random number. */
-  srand (time (NULL) + seed);
-
-  int i;
-  for (i = 0; i < PASSWD_LEN; i++)
-    /* The sizeof (pool) decrease 1, pool[] is a string with '\0' ends. */
-    passwd[i] = pool[rand () % (sizeof (pool) - 1)];
-  
-  /* Treate as string. */
-  passwd[PASSWD_LEN] = '\0';
-  return passwd;
-}
 
 
 /* Deal with user input account. */
@@ -215,7 +192,7 @@ stdin_assemble (int _argc, char *const *_argv)
   
 
   FILE *fp = NULL;
-  fp = fopen ("smb_act", "a+");
+  fp = fopen ("smb_db", "a+");
 
 
   //  puts ("user input\n");
@@ -223,7 +200,7 @@ stdin_assemble (int _argc, char *const *_argv)
   printf ("add these users:\n");
   while (i <= _argc)
     {
-      //printf ("arg %d is %s\n", i++, _argv[i]);
+      printf ("arg %d is %s\n", i+1, _argv[i]);
       strcpy (user_name, _argv[i]);
       gen_passwd(passwd, i++);
       //printf ("%s:%s\n", user_name, passwd);
@@ -464,7 +441,8 @@ main (int argc, char *argv[])
     /* ///////////////// */
 
 
-    if (lost || actind < argc)
+    printf ("actind is : %d new argc is %d\n", actind, argc); 
+    if (lost || actind < argc || argc < 2)
       {
 	if (actind < argc)
 	  fprintf (stderr, "%s: >extra operand: %s\n",
